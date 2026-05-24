@@ -271,83 +271,117 @@ function setInitialTodayDate() {
     }
 }
 
-function checkLogin() {
+async function checkLogin() {
 
-    const user = document.getElementById("userInp").value.trim();
-    const pass = document.getElementById("passInp").value.trim();
-    const errorBox = document.getElementById("loginError");
+    const user =
+        document.getElementById("userInp")
+        .value.trim();
+
+    const pass =
+        document.getElementById("passInp")
+        .value.trim();
+
+    const errorBox =
+        document.getElementById("loginError");
 
     errorBox.style.display = "none";
 
     if (!user || !pass) {
 
-        errorBox.innerText = "⚠️ Bitte alles eingeben!";
+        errorBox.innerText =
+            "⚠️ Bitte alles eingeben!";
+
         errorBox.style.display = "block";
+
         return;
     }
 
-    // kullanıcı kontrolü
-    if (!initialDB[user]) {
+    try {
 
-        errorBox.innerText = "⚠️ Benutzer nicht gefunden!";
-        errorBox.style.display = "block";
-        return;
-    }
+        const response = await fetch(
 
-    // kayıtlı şifre
-    const savedPass = localStorage.getItem("apg_pass_" + user);
+            scriptURL +
 
-    // ilk giriş
-    if (!savedPass) {
+            "?action=login" +
 
-        if (pass === initialDB[user]) {
+            "&user=" +
+            encodeURIComponent(user) +
 
-            loggedInUser = user;
+            "&pass=" +
+            encodeURIComponent(pass)
 
-            document.getElementById("loginScreen").style.display = "none";
-            document.getElementById("setPassScreen").style.display = "flex";
+        );
 
-        } else {
+        const data =
+            await response.json();
 
-            errorBox.innerText = "⚠️ Personalnummer falsch!";
-            errorBox.style.display = "block";
+        if (!data.success) {
+
+            errorBox.innerText =
+                "⚠️ " + data.message;
+
+            errorBox.style.display =
+                "block";
+
+            return;
         }
-
-        return;
-    }
-
-    // normal giriş
-    if (pass === savedPass) {
 
         loggedInUser = user;
 
-        document.getElementById("loginScreen").style.display = "none";
+        document.getElementById(
+            "loginScreen"
+        ).style.display = "none";
 
-        // manager
-        if (superManagersList.includes(user)) {
+        // İlk giriş
+        if (data.firstLogin) {
 
-            document.getElementById("adminPanel").style.display = "block";
+            document.getElementById(
+                "setPassScreen"
+            ).style.display = "flex";
 
-            document.getElementById("adminUserDisplay").innerText =
-                "Angemeldet als Manager: " + user;
+            return;
+        }
 
-            if (typeof loadAdminDashboard === "function") {
-                loadAdminDashboard();
-            }
+        // Admin / Schichtleiter
+        if (
+            data.role === "Admin" ||
+            data.role === "Schichtleiter"
+        ) {
+
+            document.getElementById(
+                "adminPanel"
+            ).style.display = "block";
+
+            document.getElementById(
+                "adminUserDisplay"
+            ).innerText =
+                "Angemeldet als: " + user;
+
+            loadAdminDashboard();
 
         } else {
 
-            document.getElementById("mainApp").style.display = "block";
-            setInitialTodayDate();
+            document.getElementById(
+                "mainApp"
+            ).style.display = "block";
 
-            document.getElementById("currentUserDisplay").innerText =
+            document.getElementById(
+                "currentUserDisplay"
+            ).innerText =
                 "Angemeldet als: " + user;
+
+            setInitialTodayDate();
         }
 
-    } else {
+    } catch(e) {
 
-        errorBox.innerText = "⚠️ Passwort falsch!";
-        errorBox.style.display = "block";
+        errorBox.innerText =
+            "⚠️ Server Fehler";
+
+        errorBox.style.display =
+            "block";
+
+        console.log(e);
     }
 }
 
