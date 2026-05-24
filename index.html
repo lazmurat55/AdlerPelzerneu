@@ -217,7 +217,7 @@ let currentSchicht = "B";
 let currentSchichtType = "Frühschicht";
 let selectedStaff = [];
 let loggedInUser = "";
-let superManagersList = ["Keskin", "Uzun"];
+let superManagersList = [];
 
 const workerData = {
     "A": ["Kunert M.", "Karali O.", "Mikuczynski K.", "Türkmen E.", "Amrouch M.", "Stania D.", "Kantaroglu A.", "Krancioch A.", "Held D.", "Berisha I.", "Neji M.", "Mulugeta G.", "Udezue P.", "Jansen M.", "Aksoy O.", "Yildirim S.", "Brand N.", "Louze A.", "Blanquez Romero V.", "Diallo M.D.", "Sener E.", "Klomrit", "Garcia"],
@@ -688,54 +688,6 @@ function filterReports(schicht, event){
 
 
 
-function saveManagerSettings(){
-
-    const user = document.getElementById('managerUser').value;
-    const role = document.getElementById('managerRole').value;
-    const schicht = document.getElementById('managerSchicht').value;
-
-    if(
-        user === 'Benutzer auswählen' ||
-        role === 'Rolle auswählen' ||
-        schicht === 'Schicht zuweisen'
-    ){
-        alert('Bitte alles auswählen!');
-        return;
-    }
-
-    const settings = {
-        user,
-        role,
-        schicht
-    };
-
-    localStorage.setItem(
-        'apg_manager_' + user,
-        JSON.stringify(settings)
-    );
-
-    alert(
-        'Gespeichert:\n\n' +
-        'Benutzer: ' + user + '\n' +
-        'Rolle: ' + role + '\n' +
-        'Schicht: ' + schicht
-    );
-}
-
-window.addEventListener('load', () => {
-
-    const select = document.getElementById('managerUser');
-
-    if(select){
-
-        Object.keys(initialDB).forEach(name => {
-
-            select.innerHTML +=
-                `<option value="${name}">${name}</option>`;
-
-        });
-    }
-});
 
 async function processReport() {
     const btn = document.getElementById('mainSendBtn'); btn.innerText = "Sende..."; btn.disabled = true;
