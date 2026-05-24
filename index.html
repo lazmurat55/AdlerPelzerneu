@@ -737,7 +737,6 @@ window.addEventListener('load', () => {
     }
 });
 
-
 async function processReport() {
     const btn = document.getElementById('mainSendBtn'); btn.innerText = "Sende..."; btn.disabled = true;
     const fts = Array.from(document.querySelectorAll('.ft-btn.active')).map(x => x.innerText).join(", ");
