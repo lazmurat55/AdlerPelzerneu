@@ -60,6 +60,10 @@
         .badge-origin { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: bold; background: var(--blue-dark); color: white; margin-bottom: 8px; }
         .dash-text { font-size: 16px; margin: 6px 0; line-height: 1.6; }
         .dash-sub-text { font-size: 14px; margin: 4px 0; line-height: 1.5; padding-left: 12px; }
+
+        /* Yeni Dashboard Üst Filtre Alanı */
+        .dash-filter-section { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; margin-top: 15px; padding: 15px; background: #1e293b; border-radius: 15px; border: 1px solid #334155;}
+        .dash-info-badge { background: rgba(56, 189, 248, 0.1); border: 1px solid var(--primary); padding: 8px 15px; border-radius: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -139,8 +143,24 @@
     <div class="header">
         <h1 style="font-size:28px; margin-bottom:5px;">APG Live Dashboard</h1>
         <p id="adminUserDisplay" style="color:var(--primary); font-size:16px; font-weight:bold;"></p>
-        <button class="main-btn" style="margin-top:15px; padding:12px 25px; font-size:15px; max-width:300px;" onclick="loadAdminDashboard()">🔄 Aktualisieren</button>
     </div>
+
+    <div class="dash-filter-section">
+        <div id="dashVardiyaButonlari" class="schicht-group" style="margin-bottom:0; max-width:350px; flex:1;">
+            <button class="schicht-btn active" id="filterAll" onclick="filterDashboard('ALL')">Alle Schichten</button>
+            <button class="schicht-btn" id="filterA" onclick="filterDashboard('A Schicht')">A</button>
+            <button class="schicht-btn" id="filterB" onclick="filterDashboard('B Schicht')">B</button>
+            <button class="schicht-btn" id="filterC" onclick="filterDashboard('C Schicht')">C</button>
+        </div>
+        
+        <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
+            <div class="dash-info-badge">
+                Nächste Aktualisierung: <b id="refreshCountdown" style="color:white;">--:--</b>
+            </div>
+            <button class="main-btn" style="margin-top:0; padding:12px 25px; font-size:15px; width:auto;" onclick="loadAdminDashboard()">🔄 Manuell aktualisieren</button>
+        </div>
+    </div>
+
     <div id="dashboardLoading" style="text-align:center; color:var(--primary); margin:30px 0; font-size:18px; font-weight:bold;">Berichte werden geladen... ⏳</div>
     <div id="reportsContainer" class="reports-grid"></div>
 </div>
@@ -158,13 +178,18 @@
 </div>
 
 <script>
-// Güncel Web App Linkin Entegre Edildi
-const scriptURL = "https://script.google.com/macros/s/AKfycbzzm_b1Q05ejyMYRZspV9Gqw5gxmxYwXxV6CgMpav9YAf9cxcms952OYp013jOyyRUz/exec";
+const scriptURL = "https://script.google.com/macros/s/AKfycbyrah4sOVv7dRfMY62lqW7qfmt7w_P86VWGMjfT38-2T4w7ERKar35uXHLoj2rVJakH/exec";
 
 let currentSchicht = "B";
 let currentSchichtType = "Frühschicht";
 let selectedStaff = [];
 let loggedInUser = "";
+let loggedInUserRole = "";
+let loggedInUserSchicht = "";
+let allFetchedReports = [];
+let activeDashboardFilter = "ALL";
+let refreshTimerInterval = null;
+let countdownSecondsLeft = 0;
 
 const workerData = {
     "A": ["Kunert M.", "Karali O.", "Mikuczynski K.", "Türkmen E.", "Amrouch M.", "Stania D.", "Kantaroglu A.", "Krancioch A.", "Held D.", "Berisha I.", "Neji M.", "Mulugeta G.", "Udezue P.", "Jansen M.", "Aksoy O.", "Yildirim S.", "Brand N.", "Louze A.", "Blanquez Romero V.", "Diallo M.D.", "Sener E.", "Klomrit", "Garcia"],
@@ -218,18 +243,30 @@ async function checkLogin() {
             return;
         }
         loggedInUser = user;
+        loggedInUserRole = data.role;
+        loggedInUserSchicht = data.schicht || "B";
         currentSchicht = data.schicht || "B"; 
 
         document.getElementById("loginScreen").style.display = "none";
-        if (data.firstLogin) {
-            document.getElementById("setPassScreen").style.display = "flex";
-            return;
-        }
+        
+        // DASHBOARD YÖNETİCİ GİRİŞİ (Admin veya Schichtleiter)
         if (data.role === "Admin" || data.role === "Schichtleiter") {
             document.getElementById("adminPanel").style.display = "block";
-            document.getElementById("adminUserDisplay").innerText = "Angemeldet als: " + user + " (" + data.role + ")";
+            document.getElementById("adminUserDisplay").innerText = `Angemeldet als: ${user} (${data.role})`;
+            
+            // Eğer Schichtleiter ise sadece kendi vardiyasını görecek ve üstteki butonlar kısıtlanacak
+            if(data.role === "Schichtleiter") {
+                activeDashboardFilter = data.schicht + " Schicht";
+                document.getElementById("dashVardiyaButonlari").style.display = "none"; // Seçim butonlarını gizle
+            } else {
+                activeDashboardFilter = "ALL";
+                document.getElementById("dashVardiyaButonlari").style.display = "grid"; // Admin ise butonları göster
+            }
+
             loadAdminDashboard();
+            startSmartRefreshEngine(); // Akıllı yenileme motorunu başlat
         } else {
+            // NORMAL OPERATÖR GİRİŞİ
             document.getElementById("mainApp").style.display = "block";
             document.getElementById("currentUserDisplay").innerText = "Angemeldet als: " + user;
             setInitialTodayDate();
@@ -258,40 +295,100 @@ async function saveNewPassword() {
     } catch(e) { alert("Server Fehler!"); }
 }
 
+// AKILLI SAYAÇ VE OTOMATİK YENİLEME MOTORU
+function startSmartRefreshEngine() {
+    if(refreshTimerInterval) clearInterval(refreshTimerInterval);
+    
+    // Süreyi belirleme fonksiyonu
+    function calculateNextInterval() {
+        const now = new Date();
+        const currentMin = now.getHours() * 60 + now.getMinutes();
+        
+        // Kritik Zaman Aralıkları (Dakika cinsinden hesaplama)
+        // 05:30 - 06:15  =>  330 - 375 dk
+        // 13:30 - 14:15  =>  810 - 855 dk
+        // 21:30 - 22:15  =>  1290 - 1335 dk
+        const isKritikZeit = (currentMin >= 330 && currentMin <= 375) || 
+                             (currentMin >= 810 && currentMin <= 855) || 
+                             (currentMin >= 1290 && currentMin <= 1335);
+                             
+        return isKritikZeit ? 90 : 1800; // Kritik zamanlarda 90 saniye, diğer zamanlarda 30 dakika (1800 saniye)
+    }
+
+    countdownSecondsLeft = calculateNextInterval();
+
+    refreshTimerInterval = setInterval(() => {
+        countdownSecondsLeft--;
+        
+        if (countdownSecondsLeft <= 0) {
+            loadAdminDashboard();
+            countdownSecondsLeft = calculateNextInterval(); // Yeni periyodu hesapla
+        }
+        
+        // Ekrana dakikalı geri sayımı basma
+        const m = Math.floor(countdownSecondsLeft / 60);
+        const s = countdownSecondsLeft % 60;
+        document.getElementById("refreshCountdown").innerText = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+}
+
 async function loadAdminDashboard() {
-    const container = document.getElementById('reportsContainer');
     document.getElementById('dashboardLoading').style.display = 'block';
     try {
         const response = await fetch(scriptURL + "?action=getReports");
         const data = await response.json();
-        const reports = data.reports;
+        allFetchedReports = data.reports || [];
         document.getElementById('dashboardLoading').style.display = 'none';
-        
-        if(!reports || reports.length === 0) {
-            container.innerHTML = '<p style="text-align:center; color:#94a3b8; font-size:16px;">Keine Berichte vorhanden.</p>';
-            return;
-        }
-        container.innerHTML = reports.map(r => `
-            <div class="report-box">
-                <span class="badge-origin">${r.origin}</span>
-                <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--primary); font-weight:bold; border-bottom:1px solid #334155; padding-bottom:6px; margin-bottom:8px;">
-                    <span>📅 ${r.date}</span>
-                    <span>Von: ${r.sender}</span>
-                </div>
-                <div style="line-height:1.6;">
-                    <p class="dash-text">Anlage: <b style="color:white;">${r.anlage}</b> ${r.ft !== '-' ? `[FT: ${r.ft}]` : ''}</p>
-                    <p class="dash-text">Artikelnummer: <b style="color:white;">${r.artikel}</b></p>
-                    <p class="dash-text" style="color:var(--success);">Gutteile: <b>${r.gut} Stk</b></p>
-                    <p class="dash-text" style="color:var(--danger);">Ausschuss: <b>${r.ausTotal} Stk</b></p>
-                    ${r.ausGrund !== '-' ? `<p class="dash-sub-text" style="color:#94a3b8;">↳ ${r.ausGrund} (${r.ausStk} Stk)</p>` : ''}
-                    ${r.stoerung !== '-' ? `<p class="dash-sub-text" style="color:#f59e0b;">⚙️ ${r.stoerung} (${r.dauer} Min)</p>` : ''}
-                    <p style="margin-top:10px; font-size:13px; color:#94a3b8; border-top:1px dashed #334155; padding-top:6px;">Team: ${r.staff}</p>
-                </div>
-            </div>
-        `).join('');
+        renderDashboardData();
     } catch(e) {
-        container.innerHTML = '<p style="text-align:center; color:var(--danger); font-size:16px;">❌ Fehler beim Laden.</p>';
+        document.getElementById('reportsContainer').innerHTML = '<p style="text-align:center; color:var(--danger); font-size:16px;">❌ Fehler beim Laden.</p>';
     }
+}
+
+function filterDashboard(schichtFilter) {
+    activeDashboardFilter = schichtFilter;
+    document.querySelectorAll('#dashVardiyaButonlari .schicht-btn').forEach(b => b.classList.remove('active'));
+    
+    if(schichtFilter === 'ALL') document.getElementById('filterAll').classList.add('active');
+    else if(schichtFilter === 'A Schicht') document.getElementById('filterA').classList.add('active');
+    else if(schichtFilter === 'B Schicht') document.getElementById('filterB').classList.add('active');
+    else if(schichtFilter === 'C Schicht') document.getElementById('filterC').classList.add('active');
+    
+    renderDashboardData();
+}
+
+function renderDashboardData() {
+    const container = document.getElementById('reportsContainer');
+    
+    // Rol ve buton filtresine göre veriyi süzüyoruz
+    const filtered = allFetchedReports.filter(r => {
+        if (activeDashboardFilter === "ALL") return true;
+        return r.origin === activeDashboardFilter;
+    });
+
+    if(filtered.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:#94a3b8; font-size:16px; grid-column: 1 / -1;">Keine Berichte für diese Schicht vorhanden.</p>';
+        return;
+    }
+
+    container.innerHTML = filtered.map(r => `
+        <div class="report-box">
+            <span class="badge-origin">${r.origin}</span>
+            <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--primary); font-weight:bold; border-bottom:1px solid #334155; padding-bottom:6px; margin-bottom:8px;">
+                <span>📅 ${r.date}</span>
+                <span>Von: ${r.sender}</span>
+            </div>
+            <div style="line-height:1.6;">
+                <p class="dash-text">Anlage: <b style="color:white;">${r.anlage}</b> ${r.ft !== '-' ? `[FT: ${r.ft}]` : ''}</p>
+                <p class="dash-text">Artikelnummer: <b style="color:white;">${r.artikel}</b></p>
+                <p class="dash-text" style="color:var(--success);">Gutteile: <b>${r.gut} Stk</b></p>
+                <p class="dash-text" style="color:var(--danger);">Ausschuss: <b>${r.ausTotal} Stk</b></p>
+                ${r.ausGrund !== '-' ? `<p class="dash-sub-text" style="color:#94a3b8;">↳ ${r.ausGrund} (${r.ausStk} Stk)</p>` : ''}
+                ${r.stoerung !== '-' ? `<p class="dash-sub-text" style="color:#f59e0b;">⚙️ ${r.stoerung} (${r.dauer} Min)</p>` : ''}
+                <p style="margin-top:10px; font-size:13px; color:#94a3b8; border-top:1px dashed #334155; padding-top:6px;">Team: ${r.staff}</p>
+            </div>
+        </div>
+    `).join('');
 }
 
 function setSchicht(s) { 
@@ -483,10 +580,6 @@ async function processReport() {
             renderStaff();
             document.getElementById('anlage').value = "";
             onAnlageChange("");
-            
-            if(document.getElementById('adminPanel').style.display === 'block') {
-                loadAdminDashboard();
-            }
         } else {
             alert("❌ Fehler: " + resData.message);
         }
